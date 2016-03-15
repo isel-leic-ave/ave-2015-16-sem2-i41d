@@ -17,6 +17,6 @@ class App {
         Type klassB = typeof(B);
         Console.WriteLine("klassB == tb --> " +  (klassB == tb)); // Cmp Identidade --> Cmp Referencias
         
-        Type klassInt = 5.GetType();
+        Type klassInt = 5.GetType(); // Todos os tipos extende de Object directa ou indirectamente
     }
 }
