@@ -10,7 +10,8 @@ class App {
          * Adiciona dinamicamente todos os métodos compatíveis com 
          * a descritor de Update da interface Subscriber.
          */
-        pub.AddSubscriberDynamic(new MySubscribers());
+        // pub.AddSubscriberDynamic(new MySubscribers());
+        pub.AddSubscriberDynamicByEmit(new MySubscribers());
         
         pub.Start();
     }

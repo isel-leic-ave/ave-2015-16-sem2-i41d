@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Collections.Generic;
 
 public interface Subscriber{
@@ -19,25 +20,40 @@ public class Counter {
     {
         subs.Add(s);
     }
-    public void AddSubscriberDynamic(object target) 
-    {
-        if(target == null) return;
-        MethodInfo [] ms = target.GetType().GetMethods();
-        foreach(MethodInfo m in ms) {
+    
+    /*
+     * Retorna os métodos de klass compatíveis com o método Subscriber::Update
+     */
+    private List<MethodInfo> GetValidHandlers(Type klass) {
+        List<MethodInfo> ms = new List<MethodInfo>();
+        foreach(MethodInfo m in klass.GetMethods()) {
             ParameterInfo[] ps = m.GetParameters();
             if( ps.Length == 1 && ps[0].ParameterType == typeof(int) )
             {
-                // subs.Add(m); // Gostava de poder fazer MAS MethodInfo não é Subscriber
-                subs.Add(new SubscriberWrapper(target, m));
+                ms.Add(m); 
             }
         }
+        return ms;
     }
-    class SubscriberWrapper : Subscriber {
-        private readonly object target;
-        private readonly MethodInfo handler;
-        public SubscriberWrapper(object t, MethodInfo h) {target = t; handler = h;}
-        public void Update(int nr) {
-            handler.Invoke(target, new object[1]{nr});
+    /*
+     * Adiciona dinamicamente todos os métodos compatíveis com Subscriber::Update
+     */
+    public void AddSubscriberDynamicByEmit(object target) 
+    {
+        if(target == null) return;
+        foreach(MethodInfo m in GetValidHandlers(target.GetType())) {
+            subs.Add(SubscriberBuilder.NewSubscriber(target, m));
+        }
+    }
+
+    /*
+     * Adiciona dinamicamente todos os métodos compatíveis com Subscriber::Update
+     */
+    public void AddSubscriberDynamic(object target) 
+    {
+        if(target == null) return;
+        foreach(MethodInfo m in GetValidHandlers(target.GetType())) {
+            subs.Add(new SubscriberWrapper(target, m));
         }
     }
     
@@ -54,5 +70,100 @@ public class Counter {
         {
             Notify(i);
         }
+    }
+}
+
+class SubscriberWrapper : Subscriber 
+{
+    private readonly object target;
+    private readonly MethodInfo handler;
+    public SubscriberWrapper(object t, MethodInfo h) {target = t; handler = h;}
+    public void Update(int nr) {
+        handler.Invoke(target, new object[1]{nr});
+    }
+}
+
+class SubscriberBuilder 
+{
+    public static Subscriber NewSubscriber(object target, MethodInfo handler) {
+        string prefix = target.GetType().Name + handler.Name;
+        string asmName =  prefix + "Handlers";
+        string klassName = prefix + "Klass";
+        AssemblyBuilder asmBuilder;
+        TypeBuilder klassBuilder = CreateType(asmName, klassName, out asmBuilder);
+        
+        // Implementar a interface Subscriber
+        klassBuilder.AddInterfaceImplementation(typeof(Subscriber));
+        
+        // Add a private field
+        FieldBuilder fldTarget = klassBuilder.DefineField(
+            "target", 
+            typeof(object), 
+            FieldAttributes.Private | FieldAttributes.InitOnly);
+
+        AddCtor(klassBuilder, fldTarget);
+        
+        // Adcionar o método Update
+        AddUpdateMethod(klassBuilder, handler, fldTarget);
+        
+        // Finish the type
+        Type klass = klassBuilder.CreateType();
+
+        asmBuilder.Save(asmName + ".dll");
+        
+        return (Subscriber) Activator.CreateInstance(klass, new object[]{target});
+    }
+
+    private static void AddCtor(TypeBuilder klassBuilder, FieldBuilder fldTarget) {  
+            // Add a constructor
+        ConstructorBuilder ctor = klassBuilder.DefineConstructor(
+            MethodAttributes.Public,
+            CallingConventions.Standard,
+            new Type[1] { typeof(object) });
+            
+        ILGenerator ctorIl = ctor.GetILGenerator();
+        ctorIl.Emit(OpCodes.Ldarg_0);
+        ctorIl.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes));
+        ctorIl.Emit(OpCodes.Ldarg_0);
+        ctorIl.Emit(OpCodes.Ldarg_1);
+        ctorIl.Emit(OpCodes.Stfld, fldTarget);
+        ctorIl.Emit(OpCodes.Ret);
+    }
+    
+    private static void AddUpdateMethod(TypeBuilder klassBuilder, MethodInfo handler, FieldBuilder fldTarget) {
+        MethodBuilder mb = klassBuilder.DefineMethod(
+            "Update",
+            MethodAttributes.Virtual | MethodAttributes.Public | MethodAttributes.ReuseSlot,
+            typeof(void),
+            new Type[1]{typeof(int)}
+        );
+        ILGenerator il = mb.GetILGenerator();
+        if(!handler.IsStatic) {
+            il.Emit(OpCodes.Ldarg_0);          // push this
+            il.Emit(OpCodes.Ldfld, fldTarget); // push field target
+        }
+        il.Emit(OpCodes.Ldarg_1);       // push arg 1
+        il.Emit(OpCodes.Call, handler); // call 
+        il.Emit(OpCodes.Ret);           // ret
+    }
+    
+    private static TypeBuilder CreateType(
+        string asmName, 
+        string klassName,
+        out AssemblyBuilder asmBuilder) 
+    {
+        AssemblyName name = new AssemblyName(asmName);
+        asmBuilder =
+            AppDomain.CurrentDomain.DefineDynamicAssembly(name, AssemblyBuilderAccess.RunAndSave);
+
+        // For a single-module assembly, the module name is usually
+        // the assembly name plus an extension.
+        ModuleBuilder moduleBuilder = asmBuilder.DefineDynamicModule(asmName, asmName + ".dll");
+
+        TypeBuilder klassBuilder = moduleBuilder.DefineType(
+            klassName,
+            TypeAttributes.Public);
+        
+        return klassBuilder;
     }
 }
