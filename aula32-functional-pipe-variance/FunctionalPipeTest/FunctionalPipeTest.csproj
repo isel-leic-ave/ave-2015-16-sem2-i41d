@@ -63,6 +63,10 @@
       <Project>{46061670-ee9b-4625-85e6-514641fcc076}</Project>
       <Name>FunctionalPipe</Name>
     </ProjectReference>
+    <ProjectReference Include="..\VarianceUtils\VarianceUtils.csproj">
+      <Project>{5ab675af-d990-4ede-a15d-62457ce006bc}</Project>
+      <Name>VarianceUtils</Name>
+    </ProjectReference>
   </ItemGroup>
   <Choose>
     <When Condition="'$(VisualStudioVersion)' == '10.0' And '$(IsCodedUITest)' == 'True'">

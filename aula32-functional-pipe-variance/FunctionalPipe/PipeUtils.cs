@@ -46,26 +46,23 @@ namespace FunctionalPipe
 
         public static Func<T, T> ChainMethodsV2<T>(string path)
         {
-            Func<T, T> res = arg => arg;
             Assembly a = Assembly.LoadFrom(path);
-            a.GetTypes()
-                .SelectMany(t => t.GetMethods())
-                .Where(m => m.IsStatic && IsCompatible<T>(m))
-                .ForEach(m => res = res.AndThen(arg => (T)m.Invoke(null, new object[1] { arg })));
-            return res;
+            return a
+                .GetTypes()                                    // IEnumerable<Type>
+                .SelectMany(t => t.GetMethods())               // IEnumerable<MethodInfo>
+                .Where(m => m.IsStatic && IsCompatible<T>(m))  // IEnumerable<MethodInfo>
+                .Aggregate<MethodInfo, Func<T, T>>(
+                    p => p,
+                    (prev, curr) => prev.AndThen(arg => (T)curr.Invoke(null, new object[1] { arg })));
         }
 
-        public static void ForEach<T>(this IEnumerable<T> src, Action<T> action) {
-            foreach (T item in src)
-            {
-                action(item);
-            }
-        }
 
         static bool IsCompatible<T>(MethodInfo m) {
-            if (m.ReturnType != typeof(T)) return false;
+            if (!typeof(T).IsAssignableFrom(m.ReturnType)) return false; // covariante => o tipo de retorno pode ser derivado
             ParameterInfo[] ps = m.GetParameters();
-            return ps.Length == 1 && ps[0].ParameterType == typeof(T);
+            if (ps.Length != 1) return false;
+            return ps[0].ParameterType.IsAssignableFrom(typeof(T)); // contravariante => aceita parametro de tipo base
+            // return ps[0].ParameterType == typeof(T);
         }
 
         /// <summary>
