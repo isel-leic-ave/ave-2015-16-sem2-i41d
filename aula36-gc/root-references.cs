@@ -36,7 +36,7 @@ class MyGCCollectClass
         
         Console.ReadLine();
         Console.WriteLine("Total Memory: {0}", GC.GetTotalMemory(false));
-        data = MakeSomeGarbage();
+        data = MakeSomeGarbage(); // Compilar com: csc /debug- /optimize+
         PrintGeneration(data); // -> gen 0 
         Console.WriteLine("Total Memory: {0}", GC.GetTotalMemory(false));
         PrintRunningGC();
